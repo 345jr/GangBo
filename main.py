@@ -1,6 +1,5 @@
 import os
 import json
-import uuid
 from pytz import timezone
 from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -54,15 +53,6 @@ class OpTipPlugin(Star):
         if user_origin not in self.users:
             self.users.append(user_origin)
             self.save_users()         
-
-    # async def broadcast_message(self, content: str):
-    #     """向所有记录的用户广播消息"""
-    #     message_chain = MessageChain().message(content)
-    #     for user in self.users:
-    #         try:
-    #             await self.context.send_message(user, message_chain)
-    #         except Exception as e:
-    #             logger.error(f"发送给用户 {user} 失败: {e}")
 
     async def execute_task(self, content: str):
         """任务到时时调用：使用 LLM 生成提醒文本并发送给用户"""
@@ -120,20 +110,42 @@ class OpTipPlugin(Star):
             async def job_func():
                 await self.execute_task(content)
                 logger.info("每日定时广播任务已执行。")
-            
+            job_name = content
             trigger = CronTrigger(hour=hour,minute=minute,timezone="Asia/Shanghai")
-            self.scheduler.add_job(job_func, trigger=trigger, id=uuid.uuid4().hex)
+            self.scheduler.add_job(job_func, trigger=trigger, id=job_name)
             yield event.plain_result(f"广播任务已安排")
+
+        elif action == "广播列表":
+            if not self.scheduler.get_jobs():
+                yield event.plain_result("目前没有记录到任何广播任务。")
+            else :
+                jobs = self.scheduler.get_jobs()
+                msg = "已记录的广播任务列表：\n" + "\n".join([f"{job.id}" for job in jobs])
+                yield event.plain_result(msg)
+        elif action == "删除广播": 
+            if not content:
+                yield event.plain_result("请提供广播的名字。")
+            else :
+                try:
+                    self.scheduler.remove_job(content)
+                    yield event.plain_result(f"已删除广播任务 {content}")
+                except Exception as e:
+                    logger.error(f"移除调度任务失败: {e}")
+
         elif action == "帮助":
             msg = """
 管理广播任务：
 - 操作类型:
   - 定时广播
-    - 示例: `/optip 每日定时 14:30 今天天气很好，记得出门防晒！`
+    - 示例: `/optip 每日定时 10:00 搜索一些励志的句子并告诉我`
   - 立即广播
-    - 示例: `/optip 立即 我有一件事情要和大家说`
+    - 示例: `/optip 立即 None 我有一件事情要和大家说`
   - 查看已记录的用户列表
     - 示例: `/optip 用户列表`
+  - 查看广播每日任务
+    - 示例: `/optip 广播列表 `
+  - 删除已经设置的广播每日任务
+    - 示例: `/optip 删除广播 None <广播ID>`
 """
             yield event.plain_result(msg)
         else:
