@@ -83,21 +83,22 @@ class TodoPlugin(Star):
     @filter.command("optip")
     async def optip(self, event: AstrMessageEvent, action: str, time_str: str = None, *, content: str = None):  
         action = action.lower().strip()
-        if action == "list":
+        if action == "用户列表":
             if not self.users:
                 yield event.plain_result("目前没有记录到任何用户。")
             else:
-                msg = "已记录的用户列表：\n" + "\n".join(self.users)
+                filter_users = [user for user in self.users if not user.startswith("webchat:FriendMessage:webchat!astrbot!")]   
+                msg = "已记录的用户列表：\n" + "\n".join(filter_users)
                 yield event.plain_result(msg)
-        elif action == "immediate":
+        elif action == "立即":
             if not content:
                 yield event.plain_result("请提供广播内容。")
                 return
             await self.broadcast_message(content)
             yield event.plain_result("立即广播已发送。")
-        elif action == "schedule":
+        elif action == "每日定时":
             if not time_str or not content:
-                yield event.plain_result("请提供时间（格式 HH:MM）和广播内容。")
+                yield event.plain_result("请提供时间（格式 HH:MM)和广播内容。")
                 return
             try:
                 hour, minute = map(int, time_str.split(":"))
@@ -105,24 +106,25 @@ class TodoPlugin(Star):
                 yield event.plain_result("时间格式错误，请使用 HH:MM 格式。")
                 return
             run_date = self.compute_next_datetime(hour, minute)
+
             
             # 定时广播任务：使用 DateTrigger 实现一次性调度
             async def job_func():
                 await self.broadcast_message(content)
-                logger.info("定时广播任务已执行。")
+                logger.info("每日定时广播任务已执行。")
             
-            trigger = DateTrigger(run_date=run_date, timezone="Asia/Shanghai")
+            trigger = CronTrigger(hour=hour,minute=minute,timezone="Asia/Shanghai")
             self.scheduler.add_job(job_func, trigger=trigger, id=uuid.uuid4().hex)
-            yield event.plain_result(f"广播任务已安排，在 {run_date.strftime('%Y-%m-%d %H:%M:%S')} 执行。")
-        elif action == "help":
+            yield event.plain_result(f"广播任务已安排")
+        elif action == "帮助":
             msg="""管理广播任务：
           - action: "schedule" 定时广播, "immediate" 立即广播, "list" 查看已记录的用户列表
-          - 若 action 为 "schedule"，需提供 time_str（格式 "HH:MM"）和广播内容
+          - 若 action 为 "schedule"，需提供 time_str(格式 "HH:MM"）和广播内容
           - 若 action 为 "immediate"，直接广播提供的内容
           示例:
             /optip schedule 14:30 今天天气很好，记得出门防晒！
-            /optip immediate 现在开始紧急广播！
-            /optip list"""
+            /optip immediate None 现在开始紧急广播！
+            /optip 用户列表"""
             yield event.plain_result(msg)
         else:
             yield event.plain_result("未知的操作，请使用 'schedule', 'immediate' , 'list' , 'help'。")
